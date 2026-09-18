@@ -18,6 +18,9 @@ func Setup(ctx context.Context, clients *Clients) error {
 	if err := CreateResourcesTable(ctx, clients.DynamoDB); err != nil {
 		return err
 	}
+	if err := CreateRequestsTable(ctx, clients.DynamoDB); err != nil {
+		return err
+	}
 	if err := CreateIntakeQueue(ctx, clients.SQS); err != nil {
 		return err
 	}
