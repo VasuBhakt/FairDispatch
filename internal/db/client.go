@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"log"
+	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -26,7 +27,11 @@ func NewLocalClients(ctx context.Context) *Clients {
 		log.Fatalf("unable to load SDK config, %v", err)
 	}
 
-	localEndpoint := aws.String("http://localhost:4566")
+	endpoint := os.Getenv("AWS_ENDPOINT_URL")
+	if endpoint == "" {
+		endpoint = "http://localhost:4566" // fallback
+	}
+	localEndpoint := aws.String(endpoint)
 
 	return &Clients{
 		DynamoDB: dynamodb.NewFromConfig(cfg, func(o *dynamodb.Options) {
