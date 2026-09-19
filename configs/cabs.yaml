@@ -1,0 +1,9 @@
+domain: "cabs"
+resource_type: "cab-driver"
+hold_ttl_seconds: 120
+
+# Scoring logic (0 to 1 scale)
+# Cabs care much more about proximity than food delivery.
+weights:
+  fairness: 0.3
+  proximity: 0.7

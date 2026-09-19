@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
@@ -58,6 +59,23 @@ func ClaimResource(ctx context.Context, client *dynamodb.Client, resourceID stri
 			return ErrAlreadyClaimed
 		}
 		return fmt.Errorf("failed to claim resource: %w", err)
+	}
+	return nil
+}
+
+// SaveResource saves a resource to the DynamoDB resources table.
+func SaveResource(ctx context.Context, client *dynamodb.Client, resource Resource) error {
+	item, err := attributevalue.MarshalMap(resource)
+	if err != nil {
+		return fmt.Errorf("failed to marshal resource: %w", err)
+	}
+
+	_, err = client.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String("resources"),
+		Item:      item,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to put item in dynamodb: %w", err)
 	}
 	return nil
 }

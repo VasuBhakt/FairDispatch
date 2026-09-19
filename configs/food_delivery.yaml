@@ -1,0 +1,8 @@
+domain: "food-delivery"
+resource_type: "food-rider"
+hold_ttl_seconds: 300
+
+# Scoring logic (0 to 1 scale)
+weights:
+  fairness: 0.4  
+  proximity: 0.6
