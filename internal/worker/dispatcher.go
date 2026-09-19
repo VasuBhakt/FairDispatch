@@ -17,6 +17,7 @@ import (
 type DispatchRequest struct {
 	ID     string `json:"id"`
 	Domain string `json:"domain"`
+	Zone   string `json:"zone"`
 }
 
 type Dispatcher struct {
@@ -73,7 +74,7 @@ func (d *Dispatcher) poll(ctx context.Context) {
 
 	// Retry loop for our atomic claim race condition
 	for i := 0; i < 3; i++ {
-		bestResource, err := matcher.FindBestResource(ctx, d.dbClient)
+		bestResource, err := matcher.FindBestResource(ctx, d.dbClient, req.Zone)
 		if err != nil {
 			log.Printf("No available resources found: %v (Wait for next cycle)", err)
 			time.Sleep(2 * time.Second)

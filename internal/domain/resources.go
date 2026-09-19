@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -23,6 +24,7 @@ const (
 type Resource struct {
 	ID             string         `dynamodbav:"id"`
 	Type           string         `dynamodbav:"type"`
+	Zone           string         `dynamodbav:"zone"`
 	Status         ResourceStatus `dynamodbav:"status"`
 	OrdersLastHour int            `dynamodbav:"orders_last_hour"`
 	IdleSince      int64          `dynamodbav:"idle_since"`
@@ -76,6 +78,54 @@ func SaveResource(ctx context.Context, client *dynamodb.Client, resource Resourc
 	})
 	if err != nil {
 		return fmt.Errorf("failed to put item in dynamodb: %w", err)
+	}
+	return nil
+}
+
+// ConfirmResource moves a resource from HELD to BUSY.
+func ConfirmResource(ctx context.Context, client *dynamodb.Client, resourceID string) error {
+	_, err := client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String("resources"),
+		Key: map[string]types.AttributeValue{
+			"id": &types.AttributeValueMemberS{Value: resourceID},
+		},
+		UpdateExpression: aws.String("SET #s = :busy"),
+		ConditionExpression: aws.String("#s = :held"),
+		ExpressionAttributeNames: map[string]string{
+			"#s": "status",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":busy": &types.AttributeValueMemberS{Value: string(StatusBusy)},
+			":held": &types.AttributeValueMemberS{Value: string(StatusHeld)},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to confirm resource: %w", err)
+	}
+	return nil
+}
+
+// CompleteResource moves a resource from BUSY to AVAILABLE, updating stats.
+func CompleteResource(ctx context.Context, client *dynamodb.Client, resourceID string) error {
+	_, err := client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String("resources"),
+		Key: map[string]types.AttributeValue{
+			"id": &types.AttributeValueMemberS{Value: resourceID},
+		},
+		UpdateExpression: aws.String("SET #s = :available, orders_last_hour = orders_last_hour + :inc, idle_since = :now"),
+		ConditionExpression: aws.String("#s = :busy"),
+		ExpressionAttributeNames: map[string]string{
+			"#s": "status",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":available": &types.AttributeValueMemberS{Value: string(StatusAvailable)},
+			":busy":      &types.AttributeValueMemberS{Value: string(StatusBusy)},
+			":inc":       &types.AttributeValueMemberN{Value: "1"},
+			":now":       &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", time.Now().Unix())},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to complete resource: %w", err)
 	}
 	return nil
 }

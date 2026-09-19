@@ -13,6 +13,7 @@ import (
 type DispatchRequest struct {
 	ID     string `json:"id"`
 	Domain string `json:"domain"`
+	Zone   string `json:"zone"`
 }
 
 type Client struct {

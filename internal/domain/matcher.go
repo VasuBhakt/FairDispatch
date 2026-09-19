@@ -31,16 +31,20 @@ func (m *Matcher) Score(resource *Resource, distanceToPickup float64) float64 {
 	return (fairness * m.Config.Weights.Fairness) + (proximity * m.Config.Weights.Proximity)
 }
 
-// FindBestResource scans for AVAILABLE resources and returns the highest scoring one.
-func (m *Matcher) FindBestResource(ctx context.Context, client *dynamodb.Client) (*Resource, error) {
-	out, err := client.Scan(ctx, &dynamodb.ScanInput{
-		TableName:        aws.String("resources"),
-		FilterExpression: aws.String("#s = :available AND #t = :rtype"),
+// FindBestResource queries the GSI for AVAILABLE resources in the given zone and returns the highest scoring one.
+func (m *Matcher) FindBestResource(ctx context.Context, client *dynamodb.Client, zone string) (*Resource, error) {
+	out, err := client.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String("resources"),
+		IndexName:              aws.String("ZoneStatusIndex"),
+		KeyConditionExpression: aws.String("#z = :zone AND #s = :available"),
+		FilterExpression:       aws.String("#t = :rtype"),
 		ExpressionAttributeNames: map[string]string{
+			"#z": "zone",
 			"#s": "status",
 			"#t": "type",
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":zone":      &types.AttributeValueMemberS{Value: zone},
 			":available": &types.AttributeValueMemberS{Value: string(StatusAvailable)},
 			":rtype":     &types.AttributeValueMemberS{Value: m.Config.ResourceType},
 		},

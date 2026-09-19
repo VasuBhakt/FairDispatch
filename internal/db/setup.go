@@ -36,6 +36,20 @@ func CreateResourcesTable(ctx context.Context, client *dynamodb.Client) error {
 		},
 		AttributeDefinitions: []types.AttributeDefinition{
 			{AttributeName: aws.String("id"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("zone"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("status"), AttributeType: types.ScalarAttributeTypeS},
+		},
+		GlobalSecondaryIndexes: []types.GlobalSecondaryIndex{
+			{
+				IndexName: aws.String("ZoneStatusIndex"),
+				KeySchema: []types.KeySchemaElement{
+					{AttributeName: aws.String("zone"), KeyType: types.KeyTypeHash},
+					{AttributeName: aws.String("status"), KeyType: types.KeyTypeRange},
+				},
+				Projection: &types.Projection{
+					ProjectionType: types.ProjectionTypeAll,
+				},
+			},
 		},
 		BillingMode: types.BillingModePayPerRequest,
 	})
