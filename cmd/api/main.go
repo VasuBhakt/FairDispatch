@@ -9,26 +9,37 @@ import (
 	"fair-dispatch/internal/api"
 	"fair-dispatch/internal/db"
 	"fair-dispatch/internal/intake"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, relying on environment variables")
+	}
+
 	ctx := context.Background()
 
 	// Initialize AWS clients pointing to LocalStack
 	clients := db.NewLocalClients(ctx)
 
-	// In a real app, we'd look this up using GetQueueUrl
-	queueURL := "http://sqs.us-east-1.localhost.localstack.cloud:4566/000000000000/request-intake"
-	if os.Getenv("QUEUE_URL") != "" {
-		queueURL = os.Getenv("QUEUE_URL")
+	queueURL := os.Getenv("QUEUE_URL")
+	if queueURL == "" {
+		log.Fatal("QUEUE_URL is not set")
 	}
 
 	intakeClient := intake.NewClient(clients.SQS, queueURL)
-	handler := api.NewHandler(intakeClient)
+	handler := api.NewHandler(intakeClient, clients.DynamoDB)
 
 	http.HandleFunc("/dispatch", handler.DispatchHandler)
+	http.HandleFunc("/confirm", handler.ConfirmHandler)
+	http.HandleFunc("/complete", handler.CompleteHandler)
+	http.HandleFunc("/metrics", handler.MetricsHandler)
 
-	port := ":8080"
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = ":8080"
+	}
 	log.Printf("Starting API server on port %s", port)
 	if err := http.ListenAndServe(port, nil); err != nil {
 		log.Fatalf("Server failed: %v", err)
