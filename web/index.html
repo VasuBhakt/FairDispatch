@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fair-Dispatch Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #0b0f1a;
+            --surface: #131927;
+            --surface-hover: #1a2235;
+            --border: #1e293b;
+            --text: #f1f5f9;
+            --text-muted: #64748b;
+            --available: #10b981;
+            --available-glow: rgba(16, 185, 129, 0.15);
+            --held: #f59e0b;
+            --held-glow: rgba(245, 158, 11, 0.15);
+            --busy: #6366f1;
+            --busy-glow: rgba(99, 102, 241, 0.15);
+            --accent: #38bdf8;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #38bdf8, #818cf8, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .live-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: var(--available);
+            border-radius: 50%;
+            margin-right: 6px;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+        }
+
+        /* Metric Cards */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 2rem 1.5rem;
+            text-align: center;
+            transition: transform 0.2s ease, box-shadow 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            border-radius: 16px 16px 0 0;
+        }
+
+        .card:hover { transform: translateY(-4px); }
+
+        .card.available::before { background: var(--available); }
+        .card.available:hover { box-shadow: 0 8px 32px var(--available-glow); }
+
+        .card.held::before { background: var(--held); }
+        .card.held:hover { box-shadow: 0 8px 32px var(--held-glow); }
+
+        .card.busy::before { background: var(--busy); }
+        .card.busy:hover { box-shadow: 0 8px 32px var(--busy-glow); }
+
+        .card .label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+        }
+
+        .card .value {
+            font-size: 3.5rem;
+            font-weight: 800;
+            line-height: 1;
+            transition: all 0.3s ease;
+        }
+
+        .card.available .value { color: var(--available); }
+        .card.held .value { color: var(--held); }
+        .card.busy .value { color: var(--busy); }
+
+        .card .subtitle {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+        }
+
+        /* Progress Bar */
+        .utilization {
+            margin-bottom: 2.5rem;
+        }
+
+        .utilization-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .utilization-header h3 {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .utilization-header span {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .bar-track {
+            width: 100%;
+            height: 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+            display: flex;
+        }
+
+        .bar-segment {
+            height: 100%;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .bar-segment.available { background: var(--available); }
+        .bar-segment.held { background: var(--held); }
+        .bar-segment.busy { background: var(--busy); }
+
+        .bar-legend {
+            display: flex;
+            gap: 1.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
+        }
+
+        .legend-dot.available { background: var(--available); }
+        .legend-dot.held { background: var(--held); }
+        .legend-dot.busy { background: var(--busy); }
+
+        /* Dispatch Form */
+        .dispatch-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .dispatch-section h3 {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 1.25rem;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-end;
+        }
+
+        .form-group {
+            flex: 1;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-group select, .form-group input {
+            width: 100%;
+            padding: 0.65rem 1rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-family: inherit;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .form-group select:focus, .form-group input:focus {
+            border-color: var(--accent);
+        }
+
+        .btn {
+            padding: 0.65rem 1.75rem;
+            border: none;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1, #818cf8);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        .btn-primary:active { transform: translateY(0); }
+
+        /* Activity Log */
+        .log-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 2rem;
+        }
+
+        .log-section h3 {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+        .log-entries {
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.8rem;
+        }
+
+        .log-entry {
+            padding: 0.4rem 0;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-muted);
+            animation: fadeIn 0.3s ease;
+        }
+
+        .log-entry:last-child { border-bottom: none; }
+
+        .log-entry .timestamp { color: var(--text-muted); }
+        .log-entry .success { color: var(--available); }
+        .log-entry .warn { color: var(--held); }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .log-entries::-webkit-scrollbar { width: 4px; }
+        .log-entries::-webkit-scrollbar-track { background: transparent; }
+        .log-entries::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        @media (max-width: 640px) {
+            .metrics-grid { grid-template-columns: 1fr; }
+            .form-row { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚡ Fair-Dispatch Engine</h1>
+            <p><span class="live-dot"></span>Live Fleet Dashboard // Kolkata Region</p>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="card available">
+                <div class="label">Available</div>
+                <div class="value" id="val-available">0</div>
+                <div class="subtitle">Ready for dispatch</div>
+            </div>
+            <div class="card held">
+                <div class="label">Held</div>
+                <div class="value" id="val-held">0</div>
+                <div class="subtitle">Claimed, awaiting confirm</div>
+            </div>
+            <div class="card busy">
+                <div class="label">Busy</div>
+                <div class="value" id="val-busy">0</div>
+                <div class="subtitle">Actively delivering</div>
+            </div>
+        </div>
+
+        <div class="utilization">
+            <div class="utilization-header">
+                <h3>Fleet Utilization</h3>
+                <span id="util-pct">0%</span>
+            </div>
+            <div class="bar-track">
+                <div class="bar-segment available" id="bar-available" style="width: 100%"></div>
+                <div class="bar-segment held" id="bar-held" style="width: 0%"></div>
+                <div class="bar-segment busy" id="bar-busy" style="width: 0%"></div>
+            </div>
+            <div class="bar-legend">
+                <div class="legend-item"><div class="legend-dot available"></div> Available</div>
+                <div class="legend-item"><div class="legend-dot held"></div> Held</div>
+                <div class="legend-item"><div class="legend-dot busy"></div> Busy</div>
+            </div>
+        </div>
+
+        <div class="dispatch-section">
+            <h3>🚀 Manual Dispatch</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Request ID</label>
+                    <input type="text" id="req-id" placeholder="e.g. order-123">
+                </div>
+                <div class="form-group">
+                    <label>Zone</label>
+                    <select id="req-zone">
+                        <option value="Salt Lake">Salt Lake</option>
+                        <option value="New Town">New Town</option>
+                        <option value="Bangur Avenue">Bangur Avenue</option>
+                        <option value="Lake Town">Lake Town</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Domain</label>
+                    <select id="req-domain">
+                        <option value="cabs">Cabs</option>
+                        <option value="food_delivery">Food Delivery</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary" onclick="sendDispatch()">Dispatch</button>
+            </div>
+        </div>
+
+        <div class="log-section">
+            <h3>📋 Activity Log</h3>
+            <div class="log-entries" id="log-entries">
+                <div class="log-entry"><span class="timestamp">[--:--:--]</span> Waiting for activity...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let prevMetrics = null;
+
+        async function fetchMetrics() {
+            try {
+                const res = await fetch('/metrics');
+                const data = await res.json();
+
+                const a = data['AVAILABLE'] || 0;
+                const h = data['HELD'] || 0;
+                const b = data['BUSY'] || 0;
+                const total = a + h + b;
+
+                // Animate value changes
+                animateValue('val-available', a);
+                animateValue('val-held', h);
+                animateValue('val-busy', b);
+
+                // Update bars
+                if (total > 0) {
+                    document.getElementById('bar-available').style.width = `${(a/total)*100}%`;
+                    document.getElementById('bar-held').style.width = `${(h/total)*100}%`;
+                    document.getElementById('bar-busy').style.width = `${(b/total)*100}%`;
+                    document.getElementById('util-pct').textContent = `${Math.round(((h+b)/total)*100)}% utilized`;
+                } else {
+                    document.getElementById('util-pct').textContent = 'No resources';
+                }
+
+                // Log state changes
+                if (prevMetrics) {
+                    if (h > prevMetrics.h) addLog(`${h - prevMetrics.h} resource(s) claimed (HELD)`, 'warn');
+                    if (b > prevMetrics.b) addLog(`${b - prevMetrics.b} resource(s) confirmed (BUSY)`, 'warn');
+                    if (a > prevMetrics.a && prevMetrics.b > b) addLog(`${a - prevMetrics.a} resource(s) completed, back to pool`, 'success');
+                }
+
+                prevMetrics = { a, h, b };
+            } catch (e) {
+                console.error('Metrics fetch failed', e);
+            }
+        }
+
+        function animateValue(id, newVal) {
+            const el = document.getElementById(id);
+            const current = parseInt(el.textContent) || 0;
+            if (current !== newVal) {
+                el.textContent = newVal;
+                el.style.transform = 'scale(1.15)';
+                setTimeout(() => { el.style.transform = 'scale(1)'; }, 200);
+            }
+        }
+
+        async function sendDispatch() {
+            const id = document.getElementById('req-id').value || `req-${Date.now()}`;
+            const zone = document.getElementById('req-zone').value;
+            const domain = document.getElementById('req-domain').value;
+
+            try {
+                const res = await fetch('/dispatch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, zone, domain })
+                });
+
+                if (res.ok) {
+                    addLog(`Dispatched "${id}" to ${zone} (${domain})`, 'success');
+                    document.getElementById('req-id').value = '';
+                } else {
+                    addLog(`Dispatch failed: ${res.statusText}`, 'warn');
+                }
+            } catch (e) {
+                addLog(`Dispatch error: ${e.message}`, 'warn');
+            }
+        }
+
+        function addLog(message, type = '') {
+            const container = document.getElementById('log-entries');
+            const now = new Date().toLocaleTimeString('en-IN', { hour12: false });
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="timestamp">[${now}]</span> <span class="${type}">${message}</span>`;
+            container.prepend(entry);
+
+            // Keep max 50 entries
+            while (container.children.length > 50) {
+                container.removeChild(container.lastChild);
+            }
+        }
+
+        // Poll every second
+        setInterval(fetchMetrics, 1000);
+        fetchMetrics();
+        addLog('Dashboard connected to Fair-Dispatch API', 'success');
+    </script>
+</body>
+</html>

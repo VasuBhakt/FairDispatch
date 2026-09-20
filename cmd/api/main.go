@@ -35,6 +35,7 @@ func main() {
 	http.HandleFunc("/confirm", handler.ConfirmHandler)
 	http.HandleFunc("/complete", handler.CompleteHandler)
 	http.HandleFunc("/metrics", handler.MetricsHandler)
+	http.Handle("/", http.FileServer(http.Dir("web")))
 
 	port := os.Getenv("PORT")
 	if port == "" {
