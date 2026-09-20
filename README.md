@@ -36,6 +36,12 @@ Fair-Dispatch solves both with a single engine.
      │                 │
   AVAILABLE → HELD   Retry next-best candidate
      │
+     ├─▶ SQS Delay Queue (ttl-cleanup)
+     │     │
+     │     └─▶ After 30s: Worker receives message, 
+     │         does O(1) conditional check to release 
+     │         resource if STILL HELD.
+     │
   POST /confirm → HELD → BUSY
      │
   POST /complete → BUSY → AVAILABLE
@@ -75,8 +81,25 @@ fair-dispatch/
 ├── .env.example      # Environment configuration template
 └── README.md
 ```
+## 🐳 Quick Start (Docker)
 
-## 🚀 Quick Start
+The easiest way to run the entire distributed system (DynamoDB, SQS, API Server, and Worker) is via Docker Compose.
+
+```bash
+# Spin up the entire infrastructure
+docker compose up --build
+```
+
+This will automatically:
+1. Start a LocalStack container (AWS emulator).
+2. Run the DB/Queue setup script.
+3. Start the API Server on `localhost:8080`.
+4. Start the SQS Worker.
+
+Once running, you can open `http://localhost:8080` in your browser to view the real-time fleet dashboard, and run the load test script in another terminal.
+
+---
+## 🚀 Run Locally
 
 ### Prerequisites
 - [Go 1.21+](https://go.dev/dl/)
@@ -117,8 +140,12 @@ go run cmd/loadtest/main.go
 | Variable | Default | Description |
 |---|---|---|
 | `AWS_ENDPOINT_URL` | `http://localhost:4566` | LocalStack endpoint |
-| `QUEUE_URL` | | SQS queue URL (required) |
+| `QUEUE_URL` | | SQS request intake queue URL (required) |
+| `TTL_QUEUE_URL` | | SQS TTL cleanup queue URL (required) |
 | `API_URL` | `http://localhost:8080` | API server URL (used by load test) |
+| `AWS_REGION` | `us-east-1` | AWS Region |
+| `AWS_ACCESS_KEY_ID` | `test` | Mock AWS Key |
+| `AWS_SECRET_ACCESS_KEY` | `test` | Mock AWS Secret |
 
 ## 🛠️ Tech Stack
 
