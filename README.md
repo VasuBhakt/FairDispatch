@@ -49,6 +49,7 @@ Fair-Dispatch solves both with a single engine.
 | **DynamoDB Conditional Writes** | `ConditionExpression: status = AVAILABLE` guarantees exactly-one-winner under concurrent load. No distributed locks needed. |
 | **Zone-Based GSI Sharding** | `ZoneStatusIndex` (hash: `zone`, range: `status`) replaces full table scans with O(1) targeted queries. Scales to millions of resources. |
 | **SQS as Buffer** | Decouples request intake from processing. 50 concurrent requests don't overwhelm the worker, they queue gracefully. |
+| **Event-Driven TTL** | Uses **SQS Delay Queues** for zero-latency, millisecond-perfect resource releasing. When a driver is HELD, a delayed message is pushed. When it appears, the worker does an O(1) conditional check to release it if still unconfirmed. No heavy database polling. |
 | **YAML Domain Configs** | Swap `configs/cabs.yaml` for `configs/food_delivery.yaml` to change resource type and fairness/proximity weights. One engine, multiple verticals. |
 | **Full State Machine** | `AVAILABLE → HELD → BUSY → AVAILABLE` with atomic transitions at every step. No resource ever gets stuck. |
 
@@ -58,8 +59,8 @@ Fair-Dispatch solves both with a single engine.
 fair-dispatch/
 ├── cmd/
 │   ├── api/          # 🌐 HTTP server (:8080) /dispatch, /confirm, /complete, /metrics
-│   ├── worker/       # ⚙️ SQS polling loop: pulls requests, scores, claims
-│   ├── setup/        # 🛠️ Creates DynamoDB tables + SQS queue on LocalStack
+│   ├── worker/       # ⚙️ SQS polling loop: pulls requests, claims, and processes TTL events
+│   ├── setup/        # 🛠️ Creates DynamoDB tables + SQS queues on LocalStack
 │   └── loadtest/     # 🧪 Concurrent stress test with real-time fleet metrics
 ├── internal/
 │   ├── api/          # HTTP handlers + metrics endpoint
