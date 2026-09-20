@@ -54,23 +54,26 @@ func main() {
 	log.Println("\n=== STATE AFTER CLAIMS (Workers processed queue) ===")
 	printMetrics()
 
-	log.Println("\nSimulating restaurant confirmations (moving to BUSY)...")
-	for i := 1; i <= 15; i++ {
-		hitAPI("/confirm", fmt.Sprintf("cab-%d", i))
+	for round := 1; round <= 3; round++ {
+		log.Printf("\n--- ROUND %d ---", round)
+		log.Println("\nSimulating restaurant confirmations (moving to BUSY)...")
+		for i := 1; i <= 15; i++ {
+			hitAPI("/confirm", fmt.Sprintf("cab-%d", i))
+		}
+		time.Sleep(10 * time.Second)
+
+		log.Println("\n=== STATE AFTER CONFIRMATIONS (Drivers actively delivering) ===")
+		printMetrics()
+
+		log.Println("\nSimulating completed deliveries (moving to AVAILABLE)...")
+		for i := 1; i <= 15; i++ {
+			hitAPI("/complete", fmt.Sprintf("cab-%d", i))
+		}
+		time.Sleep(5 * time.Second)
+
+		log.Println("\n=== FINAL STATE AFTER ROUND (Drivers returned to pool) ===")
+		printMetrics()
 	}
-	time.Sleep(2 * time.Second)
-
-	log.Println("\n=== STATE AFTER CONFIRMATIONS (Drivers actively delivering) ===")
-	printMetrics()
-
-	log.Println("\nSimulating completed deliveries (moving to AVAILABLE)...")
-	for i := 1; i <= 15; i++ {
-		hitAPI("/complete", fmt.Sprintf("cab-%d", i))
-	}
-	time.Sleep(2 * time.Second)
-
-	log.Println("\n=== FINAL STATE (Drivers returned to pool) ===")
-	printMetrics()
 
 	log.Println("\nLoad test complete. Notice how the fleet transitioned beautifully through the state machine!")
 }

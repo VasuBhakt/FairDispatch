@@ -1,6 +1,6 @@
 domain: "cabs"
 resource_type: "cab-driver"
-hold_ttl_seconds: 120
+hold_ttl_seconds: 10
 
 # Scoring logic (0 to 1 scale)
 # Cabs care much more about proximity than food delivery.
