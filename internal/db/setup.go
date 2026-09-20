@@ -24,6 +24,9 @@ func Setup(ctx context.Context, clients *Clients) error {
 	if err := CreateIntakeQueue(ctx, clients.SQS); err != nil {
 		return err
 	}
+	if err := CreateTTLQueue(ctx, clients.SQS); err != nil {
+		return err
+	}
 	log.Println("Database setup complete.")
 	return nil
 }
@@ -38,6 +41,7 @@ func CreateResourcesTable(ctx context.Context, client *dynamodb.Client) error {
 			{AttributeName: aws.String("id"), AttributeType: types.ScalarAttributeTypeS},
 			{AttributeName: aws.String("zone"), AttributeType: types.ScalarAttributeTypeS},
 			{AttributeName: aws.String("status"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("held_at"), AttributeType: types.ScalarAttributeTypeN},
 		},
 		GlobalSecondaryIndexes: []types.GlobalSecondaryIndex{
 			{
@@ -45,6 +49,16 @@ func CreateResourcesTable(ctx context.Context, client *dynamodb.Client) error {
 				KeySchema: []types.KeySchemaElement{
 					{AttributeName: aws.String("zone"), KeyType: types.KeyTypeHash},
 					{AttributeName: aws.String("status"), KeyType: types.KeyTypeRange},
+				},
+				Projection: &types.Projection{
+					ProjectionType: types.ProjectionTypeAll,
+				},
+			},
+			{
+				IndexName: aws.String("StatusHeldAtIndex"),
+				KeySchema: []types.KeySchemaElement{
+					{AttributeName: aws.String("status"), KeyType: types.KeyTypeHash},
+					{AttributeName: aws.String("held_at"), KeyType: types.KeyTypeRange},
 				},
 				Projection: &types.Projection{
 					ProjectionType: types.ProjectionTypeAll,
@@ -100,5 +114,20 @@ func CreateIntakeQueue(ctx context.Context, client *sqs.Client) error {
 		return err
 	}
 	log.Println("Created queue 'request-intake'.")
+	return nil
+}
+
+func CreateTTLQueue(ctx context.Context, client *sqs.Client) error {
+	_, err := client.CreateQueue(ctx, &sqs.CreateQueueInput{
+		QueueName: aws.String("ttl-cleanup"),
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "QueueNameExists") {
+			log.Println("Queue 'ttl-cleanup' already exists.")
+			return nil
+		}
+		return err
+	}
+	log.Println("Created queue 'ttl-cleanup'.")
 	return nil
 }

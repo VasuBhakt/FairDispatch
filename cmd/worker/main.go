@@ -27,7 +27,12 @@ func main() {
 		log.Fatal("QUEUE_URL is not set")
 	}
 
-	dispatcher := worker.NewDispatcher(clients.SQS, clients.DynamoDB, queueURL)
+	ttlQueueURL := os.Getenv("TTL_QUEUE_URL")
+	if ttlQueueURL == "" {
+		log.Fatal("TTL_QUEUE_URL is not set")
+	}
+
+	dispatcher := worker.NewDispatcher(clients.SQS, clients.DynamoDB, queueURL, ttlQueueURL)
 
 	// Load domains
 	foodCfg, err := config.LoadConfig("configs/food_delivery.yaml")

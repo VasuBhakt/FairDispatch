@@ -21,18 +21,20 @@ type DispatchRequest struct {
 }
 
 type Dispatcher struct {
-	sqsClient *sqs.Client
-	dbClient  *dynamodb.Client
-	queueURL  string
-	configs   map[string]*config.DomainConfig
+	sqsClient   *sqs.Client
+	dbClient    *dynamodb.Client
+	queueURL    string
+	ttlQueueURL string
+	configs     map[string]*config.DomainConfig
 }
 
-func NewDispatcher(sqsClient *sqs.Client, dbClient *dynamodb.Client, queueURL string) *Dispatcher {
+func NewDispatcher(sqsClient *sqs.Client, dbClient *dynamodb.Client, queueURL string, ttlQueueURL string) *Dispatcher {
 	return &Dispatcher{
-		sqsClient: sqsClient,
-		dbClient:  dbClient,
-		queueURL:  queueURL,
-		configs:   make(map[string]*config.DomainConfig),
+		sqsClient:   sqsClient,
+		dbClient:    dbClient,
+		queueURL:    queueURL,
+		ttlQueueURL: ttlQueueURL,
+		configs:     make(map[string]*config.DomainConfig),
 	}
 }
 
@@ -60,7 +62,7 @@ func (d *Dispatcher) poll(ctx context.Context) {
 	var req DispatchRequest
 	if err := json.Unmarshal([]byte(*msg.Body), &req); err != nil {
 		log.Printf("Failed to parse request JSON: %v", err)
-		d.deleteMessage(ctx, msg.ReceiptHandle) // Drop malformed messages
+		d.deleteMessage(ctx, d.queueURL, msg.ReceiptHandle) // Drop malformed messages
 		return
 	}
 	log.Printf("---")
@@ -83,7 +85,11 @@ func (d *Dispatcher) poll(ctx context.Context) {
 		err = domain.ClaimResource(ctx, d.dbClient, bestResource.ID, req.ID)
 		if err == nil {
 			log.Printf("✅ SUCCESS: Atomically claimed resource '%s' for request '%s'", bestResource.ID, req.ID)
-			d.deleteMessage(ctx, msg.ReceiptHandle) // We are done with this message!
+			d.deleteMessage(ctx, d.queueURL, msg.ReceiptHandle) // We are done with this message!
+
+			// Schedule TTL Release (Event-Driven)
+			d.scheduleTTLRelease(ctx, bestResource.ID, req.ID, cfg.HoldTTLSeconds)
+
 			return
 		}
 		if errors.Is(err, domain.ErrAlreadyClaimed) {
@@ -95,9 +101,9 @@ func (d *Dispatcher) poll(ctx context.Context) {
 	}
 }
 
-func (d *Dispatcher) deleteMessage(ctx context.Context, receiptHandle *string) {
+func (d *Dispatcher) deleteMessage(ctx context.Context, queueURL string, receiptHandle *string) {
 	_, err := d.sqsClient.DeleteMessage(ctx, &sqs.DeleteMessageInput{
-		QueueUrl:      aws.String(d.queueURL),
+		QueueUrl:      aws.String(queueURL),
 		ReceiptHandle: receiptHandle,
 	})
 	if err != nil {
@@ -105,9 +111,13 @@ func (d *Dispatcher) deleteMessage(ctx context.Context, receiptHandle *string) {
 	}
 }
 
-// Start begins a persistent long-polling loop against the SQS queue
+// Start begins a persistent long-polling loop against the SQS queues
 func (d *Dispatcher) Start(ctx context.Context) {
 	log.Println("Dispatcher worker starting...")
+
+	// Background goroutine: Event-Driven TTL consumer
+	go d.ttlConsumer(ctx)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -115,6 +125,64 @@ func (d *Dispatcher) Start(ctx context.Context) {
 			return
 		default:
 			d.poll(ctx)
+		}
+	}
+}
+
+type TTLMessage struct {
+	ResourceID string `json:"resource_id"`
+	RequestID  string `json:"request_id"`
+}
+
+func (d *Dispatcher) scheduleTTLRelease(ctx context.Context, resourceID, requestID string, delaySeconds int) {
+	msgBody, _ := json.Marshal(TTLMessage{ResourceID: resourceID, RequestID: requestID})
+	_, err := d.sqsClient.SendMessage(ctx, &sqs.SendMessageInput{
+		QueueUrl:     aws.String(d.ttlQueueURL),
+		MessageBody:  aws.String(string(msgBody)),
+		DelaySeconds: int32(delaySeconds),
+	})
+	if err != nil {
+		log.Printf("Failed to schedule TTL release for resource %s: %v", resourceID, err)
+	}
+}
+
+// ttlConsumer long-polls the TTL queue for exact-time release events
+func (d *Dispatcher) ttlConsumer(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			msgResult, err := d.sqsClient.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
+				QueueUrl:            aws.String(d.ttlQueueURL),
+				MaxNumberOfMessages: 1,
+				WaitTimeSeconds:     10,
+			})
+			if err != nil {
+				time.Sleep(2 * time.Second)
+				continue
+			}
+			if len(msgResult.Messages) == 0 {
+				continue
+			}
+
+			msg := msgResult.Messages[0]
+			var ttlMsg TTLMessage
+			if err := json.Unmarshal([]byte(*msg.Body), &ttlMsg); err != nil {
+				d.deleteMessage(ctx, d.ttlQueueURL, msg.ReceiptHandle)
+				continue
+			}
+
+			err = domain.ReleaseSpecificHold(ctx, d.dbClient, ttlMsg.ResourceID, ttlMsg.RequestID)
+			if err != nil {
+				log.Printf("Error releasing specific hold %s: %v", ttlMsg.ResourceID, err)
+			} else {
+				// No error means it was released or already taken care of. Either way, log a successful release attempt.
+				// (The function returns nil if ConditionCheckFailed, meaning no-op).
+				log.Printf("🔄 TTL exact event: Processed TTL for resource '%s' (Req: %s)", ttlMsg.ResourceID, ttlMsg.RequestID)
+			}
+
+			d.deleteMessage(ctx, d.ttlQueueURL, msg.ReceiptHandle)
 		}
 	}
 }

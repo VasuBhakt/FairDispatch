@@ -28,6 +28,7 @@ type Resource struct {
 	Status         ResourceStatus `dynamodbav:"status"`
 	OrdersLastHour int            `dynamodbav:"orders_last_hour"`
 	IdleSince      int64          `dynamodbav:"idle_since"`
+	HeldAt         int64          `dynamodbav:"held_at"`
 }
 
 // ErrAlreadyClaimed is returned when the atomic claim fails due to a race condition.
@@ -42,7 +43,7 @@ func ClaimResource(ctx context.Context, client *dynamodb.Client, resourceID stri
 			"id": &types.AttributeValueMemberS{Value: resourceID},
 		},
 		// Update the status and associate it with the request
-		UpdateExpression: aws.String("SET #s = :held, assigned_request = :reqId"),
+		UpdateExpression: aws.String("SET #s = :held, assigned_request = :reqId, held_at = :now"),
 		// Critical correctness check: It MUST still be AVAILABLE right at the moment of the write
 		ConditionExpression: aws.String("#s = :available"),
 		ExpressionAttributeNames: map[string]string{
@@ -52,6 +53,7 @@ func ClaimResource(ctx context.Context, client *dynamodb.Client, resourceID stri
 			":held":      &types.AttributeValueMemberS{Value: string(StatusHeld)},
 			":reqId":     &types.AttributeValueMemberS{Value: requestID},
 			":available": &types.AttributeValueMemberS{Value: string(StatusAvailable)},
+			":now":       &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", time.Now().Unix())},
 		},
 	})
 	if err != nil {
@@ -89,7 +91,7 @@ func ConfirmResource(ctx context.Context, client *dynamodb.Client, resourceID st
 		Key: map[string]types.AttributeValue{
 			"id": &types.AttributeValueMemberS{Value: resourceID},
 		},
-		UpdateExpression: aws.String("SET #s = :busy"),
+		UpdateExpression:    aws.String("SET #s = :busy"),
 		ConditionExpression: aws.String("#s = :held"),
 		ExpressionAttributeNames: map[string]string{
 			"#s": "status",
@@ -112,7 +114,7 @@ func CompleteResource(ctx context.Context, client *dynamodb.Client, resourceID s
 		Key: map[string]types.AttributeValue{
 			"id": &types.AttributeValueMemberS{Value: resourceID},
 		},
-		UpdateExpression: aws.String("SET #s = :available, orders_last_hour = orders_last_hour + :inc, idle_since = :now"),
+		UpdateExpression:    aws.String("SET #s = :available, orders_last_hour = orders_last_hour + :inc, idle_since = :now"),
 		ConditionExpression: aws.String("#s = :busy"),
 		ExpressionAttributeNames: map[string]string{
 			"#s": "status",
@@ -126,6 +128,38 @@ func CompleteResource(ctx context.Context, client *dynamodb.Client, resourceID s
 	})
 	if err != nil {
 		return fmt.Errorf("failed to complete resource: %w", err)
+	}
+	return nil
+}
+
+// ReleaseSpecificHold releases a specific HELD resource back to AVAILABLE if it is still
+// HELD by the same requestID. This is an O(1) conditional update.
+func ReleaseSpecificHold(ctx context.Context, client *dynamodb.Client, resourceID string, requestID string) error {
+	_, err := client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String("resources"),
+		Key: map[string]types.AttributeValue{
+			"id": &types.AttributeValueMemberS{Value: resourceID},
+		},
+		UpdateExpression:    aws.String("SET #s = :available, idle_since = :now REMOVE assigned_request, held_at"),
+		ConditionExpression: aws.String("#s = :held AND assigned_request = :reqId"),
+		ExpressionAttributeNames: map[string]string{
+			"#s": "status",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":available": &types.AttributeValueMemberS{Value: string(StatusAvailable)},
+			":held":      &types.AttributeValueMemberS{Value: string(StatusHeld)},
+			":now":       &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", time.Now().Unix())},
+			":reqId":     &types.AttributeValueMemberS{Value: requestID},
+		},
+	})
+	if err != nil {
+		// If the condition check fails, it means the driver already confirmed/completed,
+		// or someone else got it. We just ignore the error.
+		var condCheckFailed *types.ConditionalCheckFailedException
+		if errors.As(err, &condCheckFailed) || strings.Contains(err.Error(), "ConditionalCheckFailedException") {
+			return nil
+		}
+		return fmt.Errorf("failed to release specific hold: %w", err)
 	}
 	return nil
 }
