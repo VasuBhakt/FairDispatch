@@ -161,3 +161,7 @@ This is **not** a Swiggy/Zomato replacement. Those are mature, ML-augmented syst
 This is the **dispatch-fairness core** that any of these systems needs, the hard primitive underneath, proven under genuine concurrent load. It's aimed at smaller/regional delivery platforms, dark-store operators, or fleet aggregators who currently run on first-come-first-served logic and don't have the engineering resources to build a correctness-guaranteed fairness layer themselves.
 
 ---
+
+## Result
+
+![](./marks.png)
